@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import type { Timestamp } from 'firebase/firestore';
 import { Category } from '../category/category.model';
 import { Genre } from '../genre/genre.model';
 import { Tag } from '../tag/tag.model';

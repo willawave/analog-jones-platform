@@ -6,8 +6,10 @@ import {
 } from '@angular/ssr/node';
 import compression from 'compression';
 import express from 'express';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+// The lite (REST) build, to match the Firestore instance from ./app/firebase.
+import { collection, getDocs, orderBy, query, where } from 'firebase/firestore/lite';
 import { join } from 'node:path';
+import { withDeadline } from '@aj/core';
 import { CANONICAL_ORIGIN } from './app/seo/origin.token';
 import { stripMarkdown } from './app/seo/seo.text';
 import { firestore } from './app/firebase';
@@ -33,14 +35,22 @@ interface EpisodeDoc {
   episodeDate?: { toDate?: () => Date };
 }
 
+// A REST read has no time limit of its own. Without one, a Firestore stall would
+// hold these routes open until the hosting timeout; with it they fail with a 500
+// that a crawler will retry.
+const FEED_READ_TIMEOUT_MS = 10_000;
+
 /** Visible episodes, newest first — shared by the sitemap, llms.txt, and JSON API routes. */
 async function getVisibleEpisodes() {
-  const snapshot = await getDocs(
-    query(
-      collection(firestore, 'episodes'),
-      where('isVisible', '==', true),
-      orderBy('episodeDate', 'desc'),
+  const snapshot = await withDeadline(
+    getDocs(
+      query(
+        collection(firestore, 'episodes'),
+        where('isVisible', '==', true),
+        orderBy('episodeDate', 'desc'),
+      ),
     ),
+    FEED_READ_TIMEOUT_MS,
   );
   return snapshot.docs.map((doc) => ({ id: doc.id, ...(doc.data() as EpisodeDoc) }));
 }

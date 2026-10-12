@@ -44,6 +44,7 @@ describe('EpisodeService', () => {
       addDoc: vi.fn(),
       updateDoc: vi.fn().mockResolvedValue(undefined),
       writeBatch: vi.fn(),
+      Timestamp: vi.fn(),
     };
 
     mockCategoryService = {
@@ -192,15 +193,51 @@ describe('EpisodeService', () => {
     });
   });
 
-  describe('warmConnection', () => {
-    it('should issue a single-document visible-episode read to open the channel', async () => {
-      ops.getDocs.mockResolvedValueOnce({ docs: [] });
+  describe('shared visible-episode read', () => {
+    const visibleDocs = {
+      docs: [
+        {
+          id: 'ep1',
+          data: () => ({
+            title: 'A',
+            isVisible: true,
+            tags: [{ id: 't1', name: 'Featured', slug: 'featured' }],
+            intelligence: 'long markdown',
+          }),
+        },
+      ],
+    };
 
-      await service.warmConnection();
+    it('should serve both list methods from a single Firestore read', async () => {
+      ops.getDocs.mockResolvedValue(visibleDocs);
 
-      expect(ops.where).toHaveBeenCalledWith('isVisible', '==', true);
-      expect(ops.limit).toHaveBeenCalledWith(1);
+      const items = await service.getEpisodeListItems();
+      const list = await service.getVisibleEpisodeList();
+
       expect(ops.getDocs).toHaveBeenCalledTimes(1);
+      expect(items.map((e) => e.id)).toEqual(['ep1']);
+      expect(list[0].tags).toEqual([{ id: 't1', name: 'Featured', slug: 'featured' }]);
+      expect(list[0].intelligence).toBeNull();
+    });
+
+    it('should share one read between concurrent callers', async () => {
+      ops.getDocs.mockResolvedValue(visibleDocs);
+
+      await Promise.all([service.getVisibleEpisodeList(), service.getEpisodeListItems()]);
+
+      expect(ops.getDocs).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not keep a failed read, so the next call reads again', async () => {
+      ops.getDocs
+        .mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 'permission-denied' }))
+        .mockResolvedValueOnce(visibleDocs);
+
+      await expect(service.getEpisodeListItems()).rejects.toThrow('denied');
+      const list = await service.getVisibleEpisodeList();
+
+      expect(ops.getDocs).toHaveBeenCalledTimes(2);
+      expect(list.map((e) => e.id)).toEqual(['ep1']);
     });
   });
 

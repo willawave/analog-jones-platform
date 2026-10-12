@@ -37,11 +37,11 @@ Services do not call `firebase/firestore` or `firebase/auth` static functions di
 - **`FIRESTORE_OPS`** — for any service that reads/writes Firestore. Inject alongside `FIRESTORE`.
 - **`AUTH_OPS`** — for sign-in/sign-out/auth state. Inject alongside `AUTH`.
 
-Each token has a default factory that returns the real SDK implementations, so app code is unaffected. Tests override them with `vi.fn()` stubs to actually exercise the service. Without this indirection, the static imports cannot be intercepted (because `vi.mock()` is banned) and specs degenerate into shape-assertions that don't run any service code.
+`AUTH_OPS` has a default factory that returns the real SDK implementations. `FIRESTORE_OPS` has none: each app provides its own `firestoreOps` (full SDK in admin-app, `firebase/firestore/lite` in public-app), so every spec that builds a real service or a real `TransferCacheService` must provide a fake for it. Tests override the tokens with `vi.fn()` stubs to actually exercise the service. Without this indirection, the static imports cannot be intercepted (because `vi.mock()` is banned) and specs degenerate into shape-assertions that don't run any service code.
 
 Reference: `projects/core/src/lib/category/category.service.ts` + `category.service.spec.ts` (Firestore), `projects/core/src/lib/user/user.service.ts` + `user.service.spec.ts` (Auth + Firestore).
 
-When adding a service that needs an op not yet on the relevant `*Ops` interface, extend the interface **and** the default factory together — both must list every op the service uses.
+When adding a service that needs an op not yet on the relevant `*Ops` interface, extend the interface **and** every implementation together: the default factory for `AuthOps`; both apps' `firestoreOps` (`projects/<app>/src/app/firebase.ts`) and the fake `ops` objects in the service specs for `FirestoreOps`.
 
 ## Signal stores (`@ngrx/signals`)
 

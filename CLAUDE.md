@@ -40,21 +40,28 @@ Each domain follows the same pattern:
 
 ### Firebase
 
-Each app has `projects/<app>/src/app/firebase.ts` exporting `auth`, `firestore` directly. Uses Firebase modular SDK — NOT `@angular/fire`. Import instances directly in services.
+Each app has `projects/<app>/src/app/firebase.ts` exporting its Firebase instances and its `firestoreOps`. Uses Firebase modular SDK — NOT `@angular/fire`.
+
+The two apps use different Firestore builds:
+
+- **admin-app**: the full SDK (`firebase/firestore`).
+- **public-app**: the REST-only build (`firebase/firestore/lite`), for the browser and SSR. It only does one-shot reads, and the full SDK's long-lived streaming connection stalled in-app reads on phones for 30s+ once it went stale. Keep `firebase/firestore` value imports (anything but `import type`) out of files public-app loads; `pnpm check:public-bundle` fails the build if the full SDK (or `firebase/auth`) reaches the public bundle.
 
 Provided via injection tokens in each app's `app.config.ts`:
 
-- **admin-app**: `AUTH`, `FIRESTORE`
-- **public-app**: `FIRESTORE` only (no auth)
+- **admin-app**: `AUTH`, `FIRESTORE`, `FIRESTORE_OPS`
+- **public-app**: `FIRESTORE`, `FIRESTORE_OPS` (no auth)
 
 Connects to emulators when `environment.useEmulators` is true.
 
 **Static SDK functions are wrapped in injection tokens.** Because `vi.mock()` is banned (see Testing), services do not call `firebase/firestore` or `firebase/auth` static functions directly. Instead they inject:
 
-- `FIRESTORE_OPS` — `collection`, `doc`, `query`, `orderBy`, `where`, `limit`, `getDoc`, `getDocs`, `addDoc`, `updateDoc`, `writeBatch`
+- `FIRESTORE_OPS` — `collection`, `doc`, `documentId`, `query`, `orderBy`, `where`, `limit`, `getDoc`, `getDocs`, `getCountFromServer`, `addDoc`, `updateDoc`, `writeBatch`, plus the build's `Timestamp` class
 - `AUTH_OPS` — `GoogleAuthProvider`, `signInWithPopup`, `signOut`, `onAuthStateChanged`
 
-They are defined in `projects/core/src/lib/shared/firebase.token.ts` and `firebase-auth.token.ts` respectively, with default factories that return the real implementations, so app code is unaffected. Tests override them via `TestBed.configureTestingModule({ providers: [{ provide: <TOKEN>, useValue: ... }] })` to actually exercise service methods. When a service needs an SDK function not yet on the relevant `*Ops` interface, extend both the interface and the default factory together — both must list every op the service uses.
+They are defined in `projects/core/src/lib/shared/firebase.token.ts` and `firebase-auth.token.ts` respectively. `AUTH_OPS` has a default factory that returns the real implementations. `FIRESTORE_OPS` has **no** default factory (a default would bundle one Firestore build into both apps): each app builds `firestoreOps` in its `firebase.ts` and provides it in `app.config.ts`. Tests override them via `TestBed.configureTestingModule({ providers: [{ provide: <TOKEN>, useValue: ... }] })` to actually exercise service methods. When a service needs an SDK function not yet on `FirestoreOps`, extend the interface and both apps' `firestoreOps` together (public-app's is checked with `satisfies`, so a missing key fails the build). Code that needs `Timestamp` at runtime in `@aj/core` takes it from `FIRESTORE_OPS`, because the full and lite builds each have their own class and `instanceof` fails across them.
+
+Every public read goes through `TransferCacheService.cached()` (`shared/transfer-state.helpers.ts`), which retries a read that got no answer (three attempts) and bounds server-side reads to 10s. public-app's `firestoreOps` also fails any read with no answer after 30s so it can be retried. New public reads should go through `cached()` too.
 
 ### Shell Layout
 

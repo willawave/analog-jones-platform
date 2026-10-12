@@ -30,6 +30,7 @@ Services use the Firebase modular SDK via injection tokens. Tests mock those tok
 ### Guiding principles
 
 - **Mock via injection tokens.** Provide fakes for `FIRESTORE`, `FIRESTORE_OPS`, `AUTH`, or other injected services in `TestBed.configureTestingModule`.
+- **`FIRESTORE_OPS` must always be provided.** It has no default factory (each app supplies its own Firestore build: the full SDK in admin-app, `firebase/firestore/lite` in public-app), so any spec that builds a real service or a real `TransferCacheService` needs a fake for it. `TransferCacheService` reads `ops.Timestamp`; provide the real `Timestamp` class there when a test covers dates in transfer state.
 - **Do not use `vi.mock()`.** Conflicts with `@angular/build`'s vitest-mock-patch. Mock via TestBed providers instead.
 - **Use `vi.stubGlobal()` for browser APIs** unavailable in jsdom (`OffscreenCanvas`, `createImageBitmap`). Always clean up with `vi.unstubAllGlobals()` in `afterEach`.
 - **Test data transformations inline.** Since Firebase SDK functions are module-level imports, test the mapping/transformation logic directly rather than trying to mock `getDocs`, `getDoc`, etc.

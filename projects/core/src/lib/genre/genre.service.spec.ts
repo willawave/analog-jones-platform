@@ -24,6 +24,7 @@ describe('GenreService', () => {
       addDoc: vi.fn(),
       updateDoc: vi.fn().mockResolvedValue(undefined),
       writeBatch: vi.fn(),
+      Timestamp: vi.fn(),
     };
 
     TestBed.configureTestingModule({
