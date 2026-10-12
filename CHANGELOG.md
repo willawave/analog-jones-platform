@@ -2,6 +2,19 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are `MAJOR.MINOR.PATCH.MICRO` (the `VERSION` file is the source of truth).
 
+## [1.0.3.0] - 2026-10-12
+
+### Fixed
+
+- Episodes, Explorer and episode pages no longer depend on a connection to the database that the site kept open in the background. On phones that connection could die quietly, most likely while the phone was idle, and the next page you opened then sat on empty placeholder cards for 30 seconds or more. Each page now fetches its data with an ordinary request, tries again by itself if a request gets no answer, and gives up on a request after 30 seconds instead of waiting on it indefinitely.
+- With no connection, the site now says "Could not reach the server. Check your connection and try again." It used to say no episodes were found.
+
+### Changed
+
+- Pages load with less code. A first visit downloads about 160 kB less.
+- The episode list is downloaded once per visit and reused across Episodes, Explorer search and the related episodes on an episode page.
+- The sitemap, `llms.txt` and the episode feed stop waiting after 10 seconds if the database does not answer.
+
 ## [1.0.2.0] - 2026-10-10
 
 ### Added

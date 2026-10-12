@@ -1,6 +1,6 @@
 {
   "name": "analog-jones-platform",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scripts": {
     "ng": "ng",
     "build": "pnpm build:core && ng build $ANGULAR_PROJECT_NAME",

@@ -1,5 +1,8 @@
 import { InjectionToken } from '@angular/core';
-import {
+// Type-only: this file must not pull a Firestore SDK build into an app's
+// bundle. Each app picks its own build (admin-app the full SDK, public-app the
+// REST-only `firebase/firestore/lite`) and provides it through the tokens below.
+import type {
   addDoc,
   collection,
   doc,
@@ -11,6 +14,7 @@ import {
   limit,
   orderBy,
   query,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -32,23 +36,11 @@ export interface FirestoreOps {
   addDoc: typeof addDoc;
   updateDoc: typeof updateDoc;
   writeBatch: typeof writeBatch;
+  // The Timestamp class of the app's own SDK build. The full and lite builds
+  // each ship their own class, so `instanceof` only works against this one.
+  Timestamp: typeof Timestamp;
 }
 
-export const FIRESTORE_OPS = new InjectionToken<FirestoreOps>('FirestoreOps', {
-  providedIn: 'root',
-  factory: () => ({
-    collection,
-    doc,
-    documentId,
-    query,
-    orderBy,
-    where,
-    limit,
-    getDoc,
-    getDocs,
-    getCountFromServer,
-    addDoc,
-    updateDoc,
-    writeBatch,
-  }),
-});
+// No default factory: a factory here would statically import one SDK build
+// into every app. Each app provides the ops in its `app.config.ts`.
+export const FIRESTORE_OPS = new InjectionToken<FirestoreOps>('FirestoreOps');

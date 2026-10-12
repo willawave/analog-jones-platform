@@ -82,25 +82,48 @@ export class EpisodeService {
   }
 
   /**
-   * Visible episodes for the archive list view (`/episodes`), transfer-cached so
-   * the server-rendered route serializes the full list instead of a loading
-   * skeleton and the browser reuses it without a second Firestore read.
-   *
-   * The list only renders id/title/episodeDate, so the unbounded `intelligence`
-   * markdown is dropped before caching — otherwise the whole archive's
-   * intelligence text would be inlined into the SSR transfer-state payload and
-   * bloat the page. Callers needing the full document use `getVisibleEpisodes`.
+   * One read of every visible episode, shared by the two list methods below for
+   * the lifetime of this service instance (a page session in the browser, one
+   * request on the server). public-app reads over REST with no local SDK cache,
+   * so without this, opening the archive and then a page that needs the
+   * taxonomy list would download the whole collection twice. `intelligence`
+   * (unbounded markdown) is dropped here so it is neither retained nor inlined
+   * into transfer state. A failed read is not kept, so the next call retries.
    */
-  async getVisibleEpisodeList(): Promise<Episode[]> {
-    return this.transferCache.cached('episodes.visibleList', async () => {
+  private visibleEpisodes: Promise<Episode[]> | null = null;
+
+  private readVisibleEpisodes(): Promise<Episode[]> {
+    if (!this.visibleEpisodes) {
       const q = this.ops.query(
         this.ops.collection(this.firestore, 'episodes'),
         this.ops.where('isVisible', '==', true),
         this.ops.orderBy('episodeDate', 'desc'),
       );
-      const snapshot = await this.ops.getDocs(q);
-      return snapshot.docs.map((d) => ({ ...this.toEpisode(d), intelligence: null }));
-    });
+      const pending = this.ops
+        .getDocs(q)
+        .then((snapshot) =>
+          snapshot.docs.map((d) => ({ ...this.toEpisode(d), intelligence: null })),
+        );
+      pending.catch(() => {
+        if (this.visibleEpisodes === pending) this.visibleEpisodes = null;
+      });
+      this.visibleEpisodes = pending;
+    }
+    return this.visibleEpisodes;
+  }
+
+  /**
+   * Visible episodes with their taxonomy (explorer search, related episodes),
+   * transfer-cached so a server-rendered route serializes the list and the
+   * browser reuses it without a second Firestore read.
+   *
+   * The unbounded `intelligence` markdown is dropped before caching — otherwise
+   * the whole archive's intelligence text would be inlined into the SSR
+   * transfer-state payload and bloat the page. Callers needing the full
+   * document use `getEpisodeById`.
+   */
+  async getVisibleEpisodeList(): Promise<Episode[]> {
+    return this.transferCache.cached('episodes.visibleList', () => this.readVisibleEpisodes());
   }
 
   /**
@@ -113,38 +136,13 @@ export class EpisodeService {
    */
   async getEpisodeListItems(): Promise<EpisodeListItem[]> {
     return this.transferCache.cached('episodes.listItems', async () => {
-      const q = this.ops.query(
-        this.ops.collection(this.firestore, 'episodes'),
-        this.ops.where('isVisible', '==', true),
-        this.ops.orderBy('episodeDate', 'desc'),
-      );
-      const snapshot = await this.ops.getDocs(q);
-      return snapshot.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          title: (data['title'] as string) ?? '',
-          episodeDate: data['episodeDate'] as EpisodeListItem['episodeDate'],
-        };
-      });
+      const episodes = await this.readVisibleEpisodes();
+      return episodes.map((e) => ({
+        id: e.id as string,
+        title: e.title ?? '',
+        episodeDate: e.episodeDate,
+      }));
     });
-  }
-
-  /**
-   * Open the Firestore WebChannel up front (browser) so the first
-   * user-triggered read — typically the episode-detail resolver on tap —
-   * reuses a warm connection instead of paying the cold ~600ms+ handshake.
-   * Deliberately NOT transfer-cached: the point is the network round-trip that
-   * establishes the channel, not the (discarded) data. A `limit(1)` read keeps
-   * it to a single document.
-   */
-  async warmConnection(): Promise<void> {
-    const q = this.ops.query(
-      this.ops.collection(this.firestore, 'episodes'),
-      this.ops.where('isVisible', '==', true),
-      this.ops.limit(1),
-    );
-    await this.ops.getDocs(q);
   }
 
   async getEpisodeById(id: string): Promise<Episode> {

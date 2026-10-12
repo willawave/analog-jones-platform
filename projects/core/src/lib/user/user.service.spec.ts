@@ -34,6 +34,7 @@ describe('UserService', () => {
       addDoc: vi.fn(),
       updateDoc: vi.fn().mockResolvedValue(undefined),
       writeBatch: vi.fn(),
+      Timestamp: vi.fn(),
     };
 
     providerInstance = { setCustomParameters: vi.fn() };
